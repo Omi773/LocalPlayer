@@ -40,6 +40,8 @@ class IosAudioPlayer : AudioPlayer {
     private var lastBeat = 0.0
     private var feedback: UIImpactFeedbackGenerator? = null
     private var timer: NSTimer? = null
+    private var rateCheck = 0
+    private var rateWanted = 0.0
 
     init {
         val session = AVAudioSession.sharedInstance()
@@ -175,8 +177,16 @@ class IosAudioPlayer : AudioPlayer {
         try {
             val f = AVAudioFile(forReading = NSURL.fileURLWithPath(song.path), error = null)
             val fmt = f.processingFormat
-            AVAudioSession.sharedInstance().setPreferredSampleRate(fmt.sampleRate, null)
             node.stop()
+            val session = AVAudioSession.sharedInstance()
+            rateWanted = fmt.sampleRate
+            if (kotlin.math.abs(session.sampleRate - rateWanted) > 1.0) {
+                // The output unit keeps its old rate while the engine runs, so stop it first,
+                // ask for the file's rate, and let ensureEngine() start it again below.
+                engine.stop()
+                session.setPreferredSampleRate(rateWanted, null)
+                session.setActive(true, null)
+            }
             engine.disconnectNodeOutput(node)
             engine.disconnectNodeOutput(eq)
             engine.connect(node, to = eq, format = fmt)
@@ -184,6 +194,7 @@ class IosAudioPlayer : AudioPlayer {
             file = f
             durationMs = (f.length * 1000.0 / fmt.sampleRate).toLong()
             startPlayback(0)
+            rateCheck = 8
             _state.update { it.copy(song = song, isPlaying = true, positionMs = 0L, durationMs = durationMs) }
             refreshFlags()
             refreshRoute()
@@ -224,6 +235,13 @@ class IosAudioPlayer : AudioPlayer {
     private fun tick() {
         val s = _state.value
         if (s.song == null || !s.isPlaying) return
+        if (rateCheck > 0) {
+            rateCheck -= 1
+            if (rateCheck == 0) {
+                val ss = AVAudioSession.sharedInstance()
+                AppLog.i("Output rate: file ${rateWanted.toInt()} Hz, iOS gives ${ss.sampleRate.toInt()} Hz")
+            }
+        }
         val p = currentPosMs()
         listenedMs += 100
         _state.update { it.copy(positionMs = p, durationMs = durationMs) }
@@ -282,7 +300,7 @@ class IosAudioPlayer : AudioPlayer {
         if (pos < order.lastIndex) load(pos + 1) else if (repeat == RepeatMode.ALL && order.isNotEmpty()) load(0)
     }
 
-        override fun previous() {
+    override fun previous() {
         if (_state.value.positionMs > 3000 || pos <= 0) seekTo(0) else load(pos - 1)
     }
 
