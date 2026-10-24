@@ -1,0 +1,8 @@
+.gradle/
+build/
+.kotlin/
+*.xcodeproj
+iosApp/LocalPlayer/Info.plist
+.DS_Store
+local.properties
+.idea/
