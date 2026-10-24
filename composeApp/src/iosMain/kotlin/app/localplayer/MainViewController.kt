@@ -17,8 +17,8 @@ private fun RoutePicker(modifier: Modifier) {
     UIKitView(
         factory = {
             AVRoutePickerView().apply {
-                tintColor = UIColor.clearColor
-                activeTintColor = UIColor.clearColor
+                tintColor = UIColor.labelColor
+                activeTintColor = UIColor.labelColor
                 prioritizesVideoDevices = false
             }
         },
