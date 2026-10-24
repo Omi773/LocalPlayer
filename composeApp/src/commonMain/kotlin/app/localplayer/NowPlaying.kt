@@ -267,7 +267,6 @@ private fun PlayerControls(
         }
     }
 }
-
 // ---------- Player tab ----------
 
 @Composable
@@ -406,4 +405,201 @@ private fun LyricsTab(
         )
     }
 }
+// ---------- Info tab ----------
 
+@Composable
+private fun InfoRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, Modifier.padding(start = 16.dp), textAlign = TextAlign.End)
+    }
+}
+
+@Composable
+private fun InfoCard(title: String, content: @Composable () -> Unit) {
+    Surface(
+        Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(24.dp),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.height(6.dp))
+            content()
+        }
+    }
+}
+
+@Composable
+private fun OutputDetails(out: OutputInfo) {
+    val colors = MaterialTheme.colorScheme
+    DetailRow("Device", out.deviceName.ifBlank { "—" })
+    DetailRow("Route type", if (out.portType.isBlank()) "—" else "${out.kind} (${out.portType})")
+    DetailRow(
+        "External output",
+        if (out.external) "Connected" else "Not connected",
+        valueColor = if (out.external) colors.primary else colors.onSurface,
+    )
+    DetailRow("Output sample rate", formatRate(out.sampleRate))
+    DetailRow("Output channels", if (out.channels > 0) "${out.channels}" else "—")
+    DetailRow("Output latency", "${fmt1(out.latencyMs)} ms")
+    if (out.ioBufferMs > 0.0) DetailRow("IO buffer", "${fmt1(out.ioBufferMs)} ms")
+    DetailRow("System volume", "${(out.volume * 100).toInt()}%")
+}
+
+@Composable
+private fun InfoTab(
+    bridge: PlatformBridge,
+    out: OutputInfo,
+    song: Song,
+    onSongUpdated: (Song) -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val report by produceState<AudioReport?>(null, song.path) {
+        value = null
+        value = bridge.analyze(song)
+    }
+    val scope = rememberCoroutineScope()
+    var status by remember { mutableStateOf("") }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        InfoCard("Live output") {
+            Column {
+                OutputDetails(out)
+                Text(
+                    "Values are what iOS reports for the audio session, not the DAC's internal rate.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+        }
+        InfoCard("Audio quality") {
+            val r = report
+            if (r == null) {
+                Text("Analysing…", color = colors.onSurfaceVariant)
+            } else {
+                Column {
+                    InfoRow("Format", r.container + if (r.lossless) " (lossless)" else " (lossy)")
+                    InfoRow("Sample rate", formatRate(r.sampleRate))
+                    InfoRow("Bit depth", if (r.bitDepth > 0) "${r.bitDepth}-bit" else "—")
+                    InfoRow("Channels", r.channels.toString())
+                    InfoRow("Bitrate", "${r.bitrateKbps} kbps")
+                    InfoRow("Size", formatBytes(r.sizeBytes))
+                    InfoRow("Hi-res", if (r.hiRes) "Yes" else "No")
+                    r.cutoffKHz?.let { InfoRow("Spectrum cutoff", "~${fmt1(it)} kHz") }
+                    r.effectiveBits?.let { InfoRow("Real bits used", "$it") }
+                    Spacer(Modifier.height(8.dp))
+                    Text(r.verdict, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Estimate from the audio spectrum; not a lab test.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        InfoCard("Metadata") {
+            Column {
+                InfoRow("Title", song.title)
+                InfoRow("Artist", song.artist.ifBlank { "—" })
+                InfoRow("Album", song.album.ifBlank { "—" })
+                InfoRow("File", song.path.substringAfterLast('/'))
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = {
+                    scope.launch {
+                        status = "Searching…"
+                        val s = bridge.fetchMetadata(song)
+                        if (s != null) {
+                            onSongUpdated(s)
+                            status = "Updated: ${s.title} - ${s.artist}"
+                        } else {
+                            status = "No extension found metadata"
+                        }
+                    }
+                }) { Text("Fetch with extensions") }
+                if (status.isNotEmpty()) {
+                    Text(status, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                }
+            }
+        }
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+// ---------- EQ tab ----------
+
+private fun gainLabel(g: Float) = (if (g > 0.05f) "+" else "") + fmt1(g)
+private fun freqLabel(f: Float) = if (f >= 1000f) "${fmt1(f / 1000f)}k" else "${f.roundToInt()}"
+
+@Composable
+private fun EqTab(eq: EqState, onEq: (EqState) -> Unit) {
+    var open by remember { mutableStateOf(-1) }
+    fun setBand(i: Int, b: EqBand) = onEq(eq.copy(bands = eq.bands.toMutableList().also { it[i] = b }))
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Parametric equalizer", style = MaterialTheme.typography.titleMedium)
+            Switch(checked = eq.enabled, onCheckedChange = { onEq(eq.copy(enabled = it)) })
+        }
+        Row(
+            Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            EQ_PRESETS.forEach { (name, gains) ->
+                FilterChip(
+                    selected = false,
+                    onClick = {
+                        onEq(eq.copy(enabled = true, bands = eq.bands.mapIndexed { i, b -> b.copy(gain = gains[i]) }))
+                    },
+                    label = { Text(name) },
+                )
+            }
+        }
+        Text("Preamp ${gainLabel(eq.preamp)} dB", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodySmall)
+        Slider(value = eq.preamp, onValueChange = { onEq(eq.copy(preamp = it)) }, valueRange = -12f..12f)
+        eq.bands.forEachIndexed { i, b ->
+            Row(
+                Modifier.fillMaxWidth().clickable { open = if (open == i) -1 else i },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(freqLabel(b.freq), Modifier.width(48.dp), style = MaterialTheme.typography.bodySmall)
+                Slider(
+                    value = b.gain.coerceIn(-12f, 12f),
+                    onValueChange = { setBand(i, b.copy(gain = it)) },
+                    modifier = Modifier.weight(1f),
+                    valueRange = -12f..12f,
+                )
+                Text(gainLabel(b.gain), Modifier.width(44.dp), textAlign = TextAlign.End, style = MaterialTheme.typography.bodySmall)
+            }
+            AnimatedVisibility(open == i) {
+                Column(Modifier.padding(start = 12.dp)) {
+                    Text("Frequency ${freqLabel(b.freq)} Hz", style = MaterialTheme.typography.labelSmall)
+                    Slider(
+                        value = (ln(b.freq / 20f) / ln(1000f)).coerceIn(0f, 1f),
+                        onValueChange = { setBand(i, b.copy(freq = 20f * 1000f.pow(it))) },
+                    )
+                    Text("Width ${fmt1(b.bandwidth)} octaves", style = MaterialTheme.typography.labelSmall)
+                    Slider(
+                        value = b.bandwidth.coerceIn(0.1f, 3f),
+                        onValueChange = { setBand(i, b.copy(bandwidth = it)) },
+                        valueRange = 0.1f..3f,
+                    )
+                }
+            }
+        }
+        FilledTonalButton(
+            onClick = { onEq(EqState()) },
+            modifier = Modifier.padding(top = 12.dp),
+        ) { Text("Reset equalizer") }
+        HorizontalDivider(Modifier.padding(vertical = 12.dp))
+        Text(
+            "Tap a band to edit its frequency and width. Lower the preamp if boosting causes distortion.",
+            Modifier.padding(bottom = 24.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
