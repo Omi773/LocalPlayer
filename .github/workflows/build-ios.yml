@@ -1,0 +1,52 @@
+name: Build iOS IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: cd iosApp && xcodegen generate
+
+      - name: Build (unsigned)
+        run: |
+          cd iosApp
+          xcodebuild \
+            -project LocalPlayer.xcodeproj \
+            -scheme LocalPlayer \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package IPA
+        run: |
+          cd iosApp/build/Build/Products/Release-iphoneos
+          mkdir Payload
+          cp -R LocalPlayer.app Payload/
+          zip -qr LocalPlayer.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LocalPlayer-ipa
+          path: iosApp/build/Build/Products/Release-iphoneos/LocalPlayer.ipa
