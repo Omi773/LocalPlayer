@@ -34,13 +34,17 @@ import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -101,23 +105,28 @@ fun NowPlayingScreen(
 ) {
     val colors = MaterialTheme.colorScheme
     val out by bridge.output.collectAsState()
+    var menuExpanded by remember { mutableStateOf(false) }
+    var fullCover by remember { mutableStateOf(settings.fullscreenCover) }
+    var tab by remember { mutableStateOf(0) }
+    val duration = state.durationMs.coerceAtLeast(1L)
+    val progress = (state.positionMs.toFloat() / duration).coerceIn(0f, 1f)
+
     LaunchedEffect(Unit) {
         while (true) {
             bridge.refreshOutput()
             delay(2000)
         }
     }
-    var fullCover by remember { mutableStateOf(settings.fullscreenCover) }
-    var tab by remember { mutableStateOf(0) }
-    val duration = state.durationMs.coerceAtLeast(1L)
-    val progress = (state.positionMs.toFloat() / duration).coerceIn(0f, 1f)
 
     Surface(Modifier.fillMaxSize(), color = colors.background) {
         if (fullCover) {
             val white = Color.White
             Box(Modifier.fillMaxSize().background(Color.Black)) {
                 Artwork(
-                    song.path, cache, Modifier.fillMaxSize(), RectangleShape,
+                    song.path,
+                    cache,
+                    Modifier.fillMaxSize(),
+                    RectangleShape,
                     placeholder = Color(0xFF1B1B1B),
                 )
                 Box(
@@ -145,7 +154,8 @@ fun NowPlayingScreen(
                     Text(song.artist, style = MaterialTheme.typography.titleMedium, color = white.copy(alpha = 0.8f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(qualityLine(song, out), style = MaterialTheme.typography.labelMedium, color = white.copy(alpha = 0.7f), modifier = Modifier.padding(top = 6.dp))
                     WavySeekBar(
-                        progress, state.isPlaying,
+                        progress,
+                        state.isPlaying,
                         onSeek = { player.seekTo((it * duration).toLong()) },
                         modifier = Modifier.padding(top = 8.dp),
                         activeColor = colors.primary,
@@ -165,31 +175,67 @@ fun NowPlayingScreen(
                 Modifier
                     .fillMaxSize()
                     .windowInsetsPadding(WindowInsets.safeDrawing)
-                    .padding(horizontal = 24.dp),
+                    .padding(horizontal = 22.dp),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     IconButton(onClick = onClose) {
-                        Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = "Close", modifier = Modifier.size(32.dp))
+                        Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = "Close", modifier = Modifier.size(28.dp))
                     }
                     Text(
-                        "Now playing",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.weight(1f),
+                        "Now Playing",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
+                        modifier = Modifier.weight(1f),
                     )
-                    RouteButton(routePicker, colors.onSurface)
-                    IconButton(onClick = { fullCover = true }) {
-                        Icon(Icons.Rounded.Fullscreen, contentDescription = "Fullscreen cover")
+                    IconButton(onClick = { /* queue */ }) {
+                        Icon(Icons.Rounded.QueueMusic, contentDescription = "Queue", modifier = Modifier.size(28.dp))
+                    }
+                    Box {
+                        IconButton(onClick = { menuExpanded = true }) {
+                            Icon(Icons.Rounded.MoreVert, contentDescription = "More", modifier = Modifier.size(26.dp))
+                        }
+                        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Queue") },
+                                onClick = {
+                                    menuExpanded = false
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Song info") },
+                                onClick = {
+                                    menuExpanded = false
+                                    tab = 2
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("AirPlay") },
+                                onClick = {
+                                    menuExpanded = false
+                                },
+                            )
+                        }
                     }
                 }
+
                 Row(
                     Modifier.fillMaxWidth().padding(bottom = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     TAB_NAMES.forEachIndexed { i, name ->
-                        FilterChip(selected = tab == i, onClick = { tab = i }, label = { Text(name) })
+                        FilterChip(
+                            selected = tab == i,
+                            onClick = { tab = i },
+                            label = { Text(name) },
+                            modifier = Modifier.weight(1f),
+                        )
                     }
                 }
+
                 Crossfade(tab, Modifier.weight(1f), animationSpec = tween(250)) { t ->
                     when (t) {
                         0 -> PlayerTab(song, state, player, settings, cache, out, progress, duration)
@@ -207,7 +253,6 @@ fun NowPlayingScreen(
 private fun RouteButton(routePicker: @Composable (Modifier) -> Unit, tint: Color) {
     Box(Modifier.size(48.dp), Alignment.Center) {
         Icon(Icons.Rounded.Cast, contentDescription = "Output device", tint = tint)
-        // Invisible AirPlay picker on top: tap to choose the output.
         routePicker(Modifier.fillMaxSize())
     }
 }
@@ -222,14 +267,15 @@ private fun PlayerControls(
 ) {
     Row(
         Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = { player.toggleShuffle() }) {
+        IconButton(onClick = { player.toggleShuffle() }, modifier = Modifier.size(54.dp)) {
             Icon(
                 Icons.Rounded.Shuffle,
                 contentDescription = "Shuffle",
-                tint = if (state.shuffle) accent else content.copy(alpha = 0.6f),
+                tint = if (state.shuffle) accent else content.copy(alpha = 0.7f),
+                modifier = Modifier.size(28.dp),
             )
         }
         IconButton(onClick = { player.previous() }, modifier = Modifier.size(56.dp)) {
@@ -237,8 +283,9 @@ private fun PlayerControls(
         }
         Box(
             Modifier
-                .size(width = 88.dp, height = 64.dp)
-                .clip(RoundedCornerShape(if (state.isPlaying) 22.dp else 32.dp))
+                .weight(1f)
+                .height(78.dp)
+                .clip(RoundedCornerShape(24.dp))
                 .background(accent)
                 .clickable { player.togglePlayPause() },
             contentAlignment = Alignment.Center,
@@ -247,7 +294,7 @@ private fun PlayerControls(
                 if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                 contentDescription = "Play or pause",
                 tint = onAccent,
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier.size(38.dp),
             )
         }
         IconButton(onClick = { player.next() }, enabled = state.hasNext, modifier = Modifier.size(56.dp)) {
@@ -258,16 +305,16 @@ private fun PlayerControls(
                 modifier = Modifier.size(34.dp),
             )
         }
-        IconButton(onClick = { player.cycleRepeat() }) {
+        IconButton(onClick = { player.cycleRepeat() }, modifier = Modifier.size(54.dp)) {
             Icon(
                 if (state.repeat == RepeatMode.ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
                 contentDescription = "Repeat",
-                tint = if (state.repeat == RepeatMode.OFF) content.copy(alpha = 0.6f) else accent,
+                tint = if (state.repeat == RepeatMode.OFF) content.copy(alpha = 0.7f) else accent,
+                modifier = Modifier.size(28.dp),
             )
         }
     }
 }
-// ---------- Player tab ----------
 
 @Composable
 private fun PlayerTab(
@@ -281,49 +328,105 @@ private fun PlayerTab(
     duration: Long,
 ) {
     val colors = MaterialTheme.colorScheme
-    val scale by animateFloatAsState(if (state.isPlaying) 1f else 0.9f, tween(350), label = "cover")
+    val scale by animateFloatAsState(if (state.isPlaying) 1f else 0.96f, tween(350), label = "cover")
+
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Artwork(
-            song.path, cache,
+            song.path,
+            cache,
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
                 .padding(vertical = 8.dp)
                 .graphicsLayer { scaleX = scale; scaleY = scale },
-            RoundedCornerShape(settings.coverRadius.dp),
+            RoundedCornerShape(30.dp),
+            placeholder = Color(0xFF1F1F1F),
         )
-        Text(song.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Text(song.artist, style = MaterialTheme.typography.titleMedium, color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+
+        Text(
+            song.title,
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.Bold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 10.dp),
+        )
+        Text(
+            song.artist.ifBlank { "Unknown artist" },
+            style = MaterialTheme.typography.titleMedium,
+            color = colors.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+
         if (settings.showDetails) {
-            Row(
-                Modifier
-                    .padding(top = 10.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(colors.secondaryContainer)
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            Surface(
+                color = colors.surfaceContainerHigh,
+                shape = RoundedCornerShape(18.dp),
+                tonalElevation = 0.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 14.dp),
             ) {
-                Icon(Icons.Rounded.GraphicEq, contentDescription = null, tint = colors.onSecondaryContainer, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(qualityLine(song, out), style = MaterialTheme.typography.labelMedium, color = colors.onSecondaryContainer)
+                Row(
+                    Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Rounded.GraphicEq, contentDescription = null, tint = colors.primary, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        qualityLine(song, out),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = colors.onSurface,
+                    )
+                }
             }
         }
+
         WavySeekBar(
-            progress, state.isPlaying,
+            progress,
+            state.isPlaying,
             onSeek = { player.seekTo((it * duration).toLong()) },
-            modifier = Modifier.padding(top = 12.dp),
+            modifier = Modifier.padding(top = 18.dp),
+            activeColor = colors.primary,
+            trackColor = colors.outline.copy(alpha = 0.35f),
         )
+
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(formatTime(state.positionMs), style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
             Text(formatTime(state.durationMs), style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
         }
+
         Spacer(Modifier.height(8.dp))
         PlayerControls(state, player, colors.onSurface, colors.primary, colors.onPrimary)
+        Spacer(Modifier.height(14.dp))
+
+        Surface(
+            color = colors.surfaceContainerHigh,
+            shape = RoundedCornerShape(18.dp),
+            tonalElevation = 0.dp,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text("Output", style = MaterialTheme.typography.labelLarge, color = colors.onSurfaceVariant)
+                Text(
+                    out.deviceName.ifBlank { "System" },
+                    style = MaterialTheme.typography.labelLarge,
+                    color = colors.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+
         Spacer(Modifier.height(24.dp))
     }
 }
-
-// ---------- Lyrics tab ----------
 
 @Composable
 private fun LyricsTab(
@@ -405,7 +508,6 @@ private fun LyricsTab(
         )
     }
 }
-// ---------- Info tab ----------
 
 @Composable
 private fun InfoRow(label: String, value: String) {
@@ -525,8 +627,6 @@ private fun InfoTab(
         Spacer(Modifier.height(24.dp))
     }
 }
-
-// ---------- EQ tab ----------
 
 private fun gainLabel(g: Float) = (if (g > 0.05f) "+" else "") + fmt1(g)
 private fun freqLabel(f: Float) = if (f >= 1000f) "${fmt1(f / 1000f)}k" else "${f.roundToInt()}"
