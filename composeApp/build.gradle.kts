@@ -10,14 +10,6 @@ kotlin {
             baseName = "ComposeApp"
             isStatic = true
         }
-        target.compilations.getByName("main").cinterops.create("flac") {
-            defFile(project.file("src/nativeInterop/cinterop/flac.def"))
-            includeDirs(rootProject.file("third_party/flac-ios/include"))
-            extraOpts(
-                "-staticLibrary", "libFLAC.a",
-                "-libraryPath", rootProject.file("third_party/flac-ios/lib").absolutePath,
-            )
-        }
     }
 
     compilerOptions {
