@@ -153,7 +153,6 @@ private fun ActionRow(title: String, subtitle: String? = null, onClick: () -> Un
         }
     }
 }
-
 @Composable
 private fun MainSettings(
     settings: Settings,
@@ -333,6 +332,86 @@ private fun MainSettings(
         item { Spacer(Modifier.height(24.dp)) }
     }
 }
+@Composable
+private fun StatsPage(stats: Stats, songs: List<Song>) {
+    val colors = MaterialTheme.colorScheme
+    val data = remember { stats.all() }
+    val rows = data.entries.mapNotNull { (k, v) -> songs.firstOrNull { it.key() == k }?.let { it to v } }
+    val plays = data.values.sumOf { it.first }
+    val ms = data.values.sumOf { it.second }
+    val artists = rows.filter { it.first.artist.isNotBlank() }
+        .groupBy { it.first.artist }
+        .mapValues { e -> e.value.sumOf { it.second.second } }
+        .entries.sortedByDescending { it.value }.take(5)
+    LazyColumn(Modifier.fillMaxSize()) {
+        item {
+            Text("Listening time", style = MaterialTheme.typography.labelLarge, color = colors.onSurfaceVariant)
+            Text(formatDuration(ms), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
+            Text("$plays plays", color = colors.onSurfaceVariant)
+            GroupTitle("Top songs")
+        }
+        items(rows.sortedByDescending { it.second.second }.take(10)) { (s, v) ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column(Modifier.weight(1f)) {
+                    Text(s.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(s.artist, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, maxLines = 1)
+                }
+                Text("${v.first}x · ${formatDuration(v.second)}", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        item { GroupTitle("Top artists") }
+        items(artists) { e ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(e.key, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(formatDuration(e.value), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        if (rows.isEmpty()) {
+            item {
+                Text(
+                    "Play songs for 30 seconds or more and they will show up here.",
+                    color = colors.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
 
 @Composable
-private
+private fun LogsPage() {
+    val lines by AppLog.lines.collectAsState()
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Also saved as localplayer.log in Files > LocalPlayer",
+                Modifier.weight(1f),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TextButton(onClick = { AppLog.clear() }) { Text("Clear") }
+        }
+        LazyColumn(Modifier.weight(1f)) {
+            items(lines.reversed()) {
+                Text(it, Modifier.padding(vertical = 2.dp), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AboutPage() {
+    Column(Modifier.fillMaxSize().padding(top = 16.dp)) {
+        Text("LocalPlayer", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text("Version $APP_VERSION", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("A music player for the songs stored on your iPhone.", Modifier.padding(top = 16.dp))
+        Text(
+            "Audio engine: AVAudioEngine with a 10-band parametric equalizer. Look inspired by PixelPlayer.",
+            Modifier.padding(top = 8.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
