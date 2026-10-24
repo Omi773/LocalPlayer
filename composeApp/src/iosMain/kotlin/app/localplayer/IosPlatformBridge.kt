@@ -102,6 +102,18 @@ class IosPlatformBridge : PlatformBridge {
 
     private fun clean(s: String) = s.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ')
 
+    private fun validSourcePath(url: NSURL?): String? {
+        val path = url?.path ?: return null
+        if (!fm.fileExistsAtPath(path)) return null
+        return path
+    }
+
+    private fun isFolderPath(path: String): Boolean {
+        val attrs = fm.attributesOfItemAtPath(path, null) ?: return false
+        val type = attrs[NSFileType] as? String ?: return false
+        return type == NSFileTypeDirectory
+    }
+
     // ---------- audio output ----------
 
     private fun classify(type: String): Pair<String, Boolean> = when (type) {
@@ -148,13 +160,33 @@ class IosPlatformBridge : PlatformBridge {
 
     private fun loadSources() {
         val text = readText("sources.tsv") ?: return
+        val valid = mutableListOf<Src>()
         for (line in text.lines()) {
             val f = line.split('\t')
             if (f.size < 3) continue
-            val data = NSData.dataWithContentsOfFile("$supportDir/bm_${f[0]}.bin") ?: continue
-            val url = NSURL.URLByResolvingBookmarkData(data, 0uL, null, null, null) ?: continue
-            url.startAccessingSecurityScopedResource()
-            srcs += Src(f[0], f[1] == "folder", f[2], url)
+            val bookmark = NSData.dataWithContentsOfFile("$supportDir/bm_${f[0]}.bin") ?: continue
+            val url = NSURL.URLByResolvingBookmarkData(bookmark, 0uL, null, null, null) ?: continue
+            val path = validSourcePath(url) ?: run {
+                AppLog.i("Skipping unavailable source: ${f[2]} (${f[0]})")
+                continue
+            }
+            try {
+                url.startAccessingSecurityScopedResource()
+                valid += Src(f[0], f[1] == "folder", f[2], url)
+            } catch (t: Throwable) {
+                AppLog.e("Could not access source ${f[2]}: ${t.message ?: "unknown error"}")
+            } finally {
+                url.stopAccessingSecurityScopedResource()
+            }
+            if (f[1] == "folder" && !isFolderPath(path)) {
+                AppLog.i("Removing non-folder source that was saved as folder: ${f[2]}")
+                continue
+            }
+        }
+        srcs.clear()
+        srcs.addAll(valid)
+        if (valid.size != text.lines().count { it.isNotBlank() }) {
+            saveSources()
         }
     }
 
@@ -168,14 +200,26 @@ class IosPlatformBridge : PlatformBridge {
     private fun addSources(urls: List<NSURL>, folder: Boolean): Boolean {
         var added = false
         for (url in urls) {
-            url.startAccessingSecurityScopedResource()
-            val data = url.bookmarkDataWithOptions(0uL, null, null, null) ?: continue
-            val path = url.path ?: continue
+            val path = validSourcePath(url) ?: run {
+                AppLog.i("Skipping unavailable picked source: ${url.path ?: "<unknown>"}")
+                continue
+            }
             if (srcs.any { it.url?.path == path }) continue
             val id = NSUUID().UUIDString
-            data.writeToFile("$supportDir/bm_$id.bin", true)
-            srcs += Src(id, folder, url.lastPathComponent ?: path, url)
-            added = true
+            try {
+                url.startAccessingSecurityScopedResource()
+                val data = url.bookmarkDataWithOptions(0uL, null, null, null) ?: run {
+                    AppLog.e("Could not bookmark source: $path")
+                    continue
+                }
+                data.writeToFile("$supportDir/bm_$id.bin", true)
+                srcs += Src(id, folder, url.lastPathComponent ?: path, url)
+                added = true
+            } catch (t: Throwable) {
+                AppLog.e("Failed to add source $path: ${t.message ?: "unknown error"}")
+            } finally {
+                url.stopAccessingSecurityScopedResource()
+            }
         }
         if (added) saveSources()
         return added
@@ -285,12 +329,31 @@ class IosPlatformBridge : PlatformBridge {
     }
 
     override suspend fun scan(): List<Song> = withContext(Dispatchers.Default) {
+        val validSrcs = srcs.filter { src ->
+            val path = src.url?.path ?: return@filter false
+            if (!fm.fileExistsAtPath(path)) {
+                AppLog.i("Removing dead source: ${src.name}")
+                false
+            } else {
+                true
+            }
+        }
+        if (validSrcs.size != srcs.size) {
+            srcs.clear()
+            srcs.addAll(validSrcs)
+            saveSources()
+        }
+
         val paths = LinkedHashSet<String>()
         val docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, true)
             .firstOrNull() as? String
         if (docs != null) collectFiles(docs, paths)
         for (src in srcs.toList()) {
             val p = src.url?.path ?: continue
+            if (!fm.fileExistsAtPath(p)) {
+                AppLog.i("Skipping unavailable source during scan: ${src.name}")
+                continue
+            }
             if (src.isFolder) collectFiles(p, paths) else if (isAudio(p)) paths.add(p)
         }
         val cache = lastLibrary
