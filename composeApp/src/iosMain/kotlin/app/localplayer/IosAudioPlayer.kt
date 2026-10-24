@@ -282,5 +282,48 @@ class IosAudioPlayer : AudioPlayer {
         if (pos < order.lastIndex) load(pos + 1) else if (repeat == RepeatMode.ALL && order.isNotEmpty()) load(0)
     }
 
-    override fun previous() {
-        if (_state.value.positionMs > 3000 || pos 
+        override fun previous() {
+        if (_state.value.positionMs > 3000 || pos <= 0) seekTo(0) else load(pos - 1)
+    }
+
+    override fun seekTo(positionMs: Long) {
+        if (file == null) return
+        val was = _state.value.isPlaying
+        startPlayback(positionMs)
+        if (!was) node.pause()
+        _state.update { it.copy(positionMs = positionMs) }
+        updateNowPlaying()
+    }
+
+    override fun toggleShuffle() {
+        shuffle = !shuffle
+        rebuildOrder(order.getOrNull(pos))
+        refreshFlags()
+    }
+
+    override fun cycleRepeat() {
+        repeat = when (repeat) { RepeatMode.OFF -> RepeatMode.ALL; RepeatMode.ALL -> RepeatMode.ONE; RepeatMode.ONE -> RepeatMode.OFF }
+        refreshFlags()
+    }
+
+    override fun setEq(eq: EqState) {
+        this.eq.bypass = !eq.enabled
+        this.eq.globalGain = eq.preamp
+        eq.bands.forEachIndexed { i, b ->
+            val band = this.eq.bands.getOrNull(i) as? AVAudioUnitEQFilterParameters ?: return@forEachIndexed
+            band.filterType = AVAudioUnitEQFilterTypeParametric
+            band.frequency = b.freq
+            band.bandwidth = b.bandwidth
+            band.gain = b.gain
+            band.bypass = false
+        }
+    }
+
+    override fun setAutomix(enabled: Boolean, fadeSec: Int) {
+        automix = enabled
+        this.fadeSec = fadeSec
+        if (!enabled) engine.mainMixerNode.outputVolume = 1f
+    }
+
+    override fun setHaptics(enabled: Boolean) { haptics = enabled }
+}
