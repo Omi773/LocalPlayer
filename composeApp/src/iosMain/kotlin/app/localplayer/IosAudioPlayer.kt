@@ -132,7 +132,7 @@ class IosAudioPlayer : AudioPlayer {
     }
 
     private fun buzz(rms: Float) {
-        val g = feedback ?: UIImpactFeedbackGenerator(style = UIImpactFeedbackStyleMedium).also { feedback = it }
+        val g = feedback ?: UIImpactFeedbackGenerator(style = UIImpactFeedbackStyle.UIImpactFeedbackStyleMedium).also { feedback = it }
         g.impactOccurredWithIntensity(rms.coerceIn(0.3f, 1f).toDouble())
         g.prepare()
     }
