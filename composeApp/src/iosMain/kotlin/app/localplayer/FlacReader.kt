@@ -32,6 +32,10 @@ internal class FlacInfo {
     val tags = HashMap<String, String>()
 }
 
+private fun logFlacParseFailure(stage: String, throwable: Throwable) {
+    AppLog.e("FLAC metadata parse failed [$stage]: ${throwable.message ?: "unknown error"}")
+}
+
 /** Minimal FLAC metadata reader: STREAMINFO, VORBIS_COMMENT and PICTURE blocks. */
 internal object FlacReader {
 
@@ -76,7 +80,8 @@ internal object FlacReader {
                 }
             }
             return info
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            logFlacParseFailure("read($path)", t)
             return null
         } finally {
             fh.closeFile()
@@ -123,7 +128,8 @@ internal object FlacReader {
                     "ALBUM" -> if (info.album == null) info.album = value
                 }
             }
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            logFlacParseFailure("vorbis tags", t)
         }
     }
 
@@ -145,7 +151,8 @@ internal object FlacReader {
                 info.picture = d.copyOfRange(p, p + dataLen)
                 info.pictureType = type
             }
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            logFlacParseFailure("picture block", t)
         }
     }
 }
