@@ -319,4 +319,91 @@ private fun PlayerTab(
             Text(formatTime(state.durationMs), style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
         }
         Spacer(Modifier.height(8.dp))
-        PlayerControls(state, player, colors.onSurface, colors.primary, colors.onPr
+        PlayerControls(state, player, colors.onSurface, colors.primary, colors.onPrimary)
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+// ---------- Lyrics tab ----------
+
+@Composable
+private fun LyricsTab(
+    bridge: PlatformBridge,
+    player: AudioPlayer,
+    state: PlaybackState,
+    song: Song,
+    settings: Settings,
+) {
+    val colors = MaterialTheme.colorScheme
+    val res by produceState<Pair<Boolean, LyricsResult?>>(true to null, song.path, settings.onlineLyrics) {
+        value = true to null
+        value = false to bridge.lyrics(song, settings.onlineLyrics)
+    }
+    val loading = res.first
+    val lyrics = res.second
+    if (loading) {
+        Text("Looking for lyrics…", color = colors.onSurfaceVariant, modifier = Modifier.padding(8.dp))
+        return
+    }
+    if (lyrics == null) {
+        Column(Modifier.padding(8.dp)) {
+            Text("No lyrics found.", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Put a .lrc file with the same name next to the song, or turn on Online lyrics in Settings.",
+                Modifier.padding(top = 8.dp),
+                color = colors.onSurfaceVariant,
+            )
+        }
+        return
+    }
+    val idx = if (lyrics.synced) currentLine(lyrics.lines, state.positionMs) else -1
+    val list = rememberLazyListState()
+    LaunchedEffect(idx) {
+        if (idx >= 0) list.animateScrollToItem((idx - 2).coerceAtLeast(0))
+    }
+    val center = settings.lyricsCenter
+    Column(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.weight(1f), state = list) {
+            itemsIndexed(lyrics.lines) { i, line ->
+                val active = i == idx
+                val a by animateFloatAsState(if (active || !lyrics.synced) 1f else 0.4f, tween(300), label = "lyricAlpha")
+                val sc by animateFloatAsState(if (active) 1f else 0.94f, tween(300), label = "lyricScale")
+                val on = colors.primary
+                val dim = colors.onSurface.copy(alpha = 0.55f)
+                val text = if (active && settings.wordSync && line.words.isNotEmpty()) {
+                    buildAnnotatedString {
+                        line.words.forEach { w ->
+                            withStyle(SpanStyle(color = if (state.positionMs >= w.timeMs) on else dim)) { append(w.text) }
+                        }
+                    }
+                } else {
+                    buildAnnotatedString { append(line.text) }
+                }
+                Text(
+                    text,
+                    Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer {
+                            alpha = a
+                            scaleX = sc
+                            scaleY = sc
+                            transformOrigin = TransformOrigin(if (center) 0.5f else 0f, 0.5f)
+                        }
+                        .clickable(enabled = lyrics.synced) { player.seekTo(line.timeMs) }
+                        .padding(vertical = 8.dp),
+                    color = if (active && line.words.isEmpty()) on else colors.onSurface,
+                    fontSize = settings.lyricsSize.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = if (center) TextAlign.Center else TextAlign.Start,
+                )
+            }
+        }
+        Text(
+            "Source: ${lyrics.source}",
+            style = MaterialTheme.typography.labelSmall,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(vertical = 6.dp),
+        )
+    }
+}
+
