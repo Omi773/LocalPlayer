@@ -107,46 +107,57 @@ private fun AppContent(
     LaunchedEffect(Unit) { rescan() }
 
     val colors = MaterialTheme.colorScheme
-    Box(Modifier.fillMaxSize().background(colors.background)) {
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-            Box(Modifier.weight(1f)) {
-                when (tab) {
-                    NavTab.HOME -> HomeScreen(
-                        songs, scanning, state, player, cache,
-                        onAddFolder = ::addFolder,
-                        onAddSongs = ::addSongs,
-                        onInfo = { infoSong = it },
-                    )
-                    NavTab.SEARCH -> SearchScreen(songs, state, player, cache) { infoSong = it }
-                    NavTab.LIBRARY -> LibraryScreen(
-                        songs, scanning, state, player, cache,
-                        onRescan = ::rescan,
-                        onInfo = { infoSong = it },
-                    )
-                    NavTab.SETTINGS -> SettingsScreen(
-                        settings = settings,
-                        onSettings = onSettings,
-                        sources = sources,
-                        songs = songs,
-                        scanning = scanning,
-                        bridge = bridge,
-                        stats = stats,
-                        onAddFolder = ::addFolder,
-                        onAddSongs = ::addSongs,
-                        onRemoveSource = {
-                            bridge.removeSource(it.id)
-                            sources = bridge.sources()
-                            rescan()
-                        },
-                        onRescan = ::rescan,
-                    )
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(colors.background)
+            .windowInsetsPadding(WindowInsets.safeDrawing),
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = colors.background,
+            tonalElevation = 0.dp,
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f)) {
+                    when (tab) {
+                        NavTab.HOME -> HomeScreen(
+                            songs, scanning, state, player, cache,
+                            onAddFolder = ::addFolder,
+                            onAddSongs = ::addSongs,
+                            onInfo = { infoSong = it },
+                        )
+                        NavTab.SEARCH -> SearchScreen(songs, state, player, cache) { infoSong = it }
+                        NavTab.LIBRARY -> LibraryScreen(
+                            songs, scanning, state, player, cache,
+                            onRescan = ::rescan,
+                            onInfo = { infoSong = it },
+                        )
+                        NavTab.SETTINGS -> SettingsScreen(
+                            settings = settings,
+                            onSettings = onSettings,
+                            sources = sources,
+                            songs = songs,
+                            scanning = scanning,
+                            bridge = bridge,
+                            stats = stats,
+                            onAddFolder = ::addFolder,
+                            onAddSongs = ::addSongs,
+                            onRemoveSource = {
+                                bridge.removeSource(it.id)
+                                sources = bridge.sources()
+                                rescan()
+                            },
+                            onRescan = ::rescan,
+                        )
+                    }
                 }
+                val current = state.song
+                if (current != null) {
+                    MiniPlayer(state, current, player, cache) { nowPlayingOpen = true }
+                }
+                FloatingNavBar(tab) { tab = it }
             }
-            val current = state.song
-            if (current != null) {
-                MiniPlayer(state, current, player, cache) { nowPlayingOpen = true }
-            }
-            FloatingNavBar(tab) { tab = it }
         }
 
         val current = state.song
