@@ -52,6 +52,7 @@ class IosAudioPlayer : AudioPlayer {
     private var totalFrames = 0L
     private var feedGen = 0
     private val feedQueue = dispatch_queue_create("localplayer.flac", null)
+    private val notificationObservers = mutableListOf<Any?>()
 
     init {
         val session = AVAudioSession.sharedInstance()
@@ -66,20 +67,48 @@ class IosAudioPlayer : AudioPlayer {
         timer = NSTimer.scheduledTimerWithTimeInterval(0.1, true) { _ -> tick() }
     }
 
+    fun shutdown() {
+        timer?.invalidate()
+        timer = null
+        for (observer in notificationObservers) {
+            if (observer != null) NSNotificationCenter.defaultCenter.removeObserver(observer)
+        }
+        notificationObservers.clear()
+        node.stop()
+        engine.stop()
+        closeFlac()
+        finishListen()
+        if (file != null) {
+            file = null
+        }
+    }
+
     // ---------- observers ----------
     private fun observe() {
         val nc = NSNotificationCenter.defaultCenter
-        nc.addObserverForName(AVAudioSessionRouteChangeNotification, null, NSOperationQueue.mainQueue) { n ->
+        notificationObservers += nc.addObserverForName(
+            AVAudioSessionRouteChangeNotification,
+            null,
+            NSOperationQueue.mainQueue,
+        ) { n ->
             refreshRoute()
             val reason = (n?.userInfo?.get("AVAudioSessionRouteChangeReasonKey") as? Number)?.toInt()
             if (reason == 2) pausePlayback() // headphones unplugged
         }
-        nc.addObserverForName(AVAudioSessionInterruptionNotification, null, NSOperationQueue.mainQueue) { n ->
+        notificationObservers += nc.addObserverForName(
+            AVAudioSessionInterruptionNotification,
+            null,
+            NSOperationQueue.mainQueue,
+        ) { n ->
             val type = (n?.userInfo?.get("AVAudioSessionInterruptionTypeKey") as? Number)?.toInt()
             val opt = (n?.userInfo?.get("AVAudioSessionInterruptionOptionKey") as? Number)?.toInt() ?: 0
             if (type == 1) pausePlayback() else if (type == 0 && (opt and 1) != 0) resume()
         }
-        nc.addObserverForName(AVAudioEngineConfigurationChangeNotification, engine, NSOperationQueue.mainQueue) { _ ->
+        notificationObservers += nc.addObserverForName(
+            AVAudioEngineConfigurationChangeNotification,
+            engine,
+            NSOperationQueue.mainQueue,
+        ) { _ ->
             if (file != null || flac != null) {
                 val was = _state.value.isPlaying
                 startPlayback(_state.value.positionMs)
@@ -379,7 +408,7 @@ class IosAudioPlayer : AudioPlayer {
         if (pos < order.lastIndex) load(pos + 1) else if (repeat == RepeatMode.ALL && order.isNotEmpty()) load(0)
     }
 
-        override fun previous() {
+    override fun previous() {
         if (_state.value.positionMs > 3000 || pos <= 0) seekTo(0) else load(pos - 1)
     }
 
