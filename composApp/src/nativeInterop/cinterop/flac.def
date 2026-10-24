@@ -1,0 +1,3 @@
+headers = FLAC/stream_decoder.h
+package = flac
+nonStrictEnums = FLAC__StreamDecoderState FLAC__StreamDecoderInitStatus FLAC__StreamDecoderWriteStatus FLAC__StreamDecoderErrorStatus
