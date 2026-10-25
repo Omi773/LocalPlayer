@@ -62,6 +62,7 @@ class IosAudioPlayer : AudioPlayer {
         engine.attachNode(eq)
         engine.mainMixerNode.installTapOnBus(0u, 1024u, null) { buf, _ -> onTap(buf) }
         setupRemoteCommands()
+        UIApplication.sharedApplication.beginReceivingRemoteControlEvents()
         observe()
         refreshRoute()
         timer = NSTimer.scheduledTimerWithTimeInterval(0.1, true) { _ -> tick() }
@@ -248,6 +249,13 @@ class IosAudioPlayer : AudioPlayer {
                 if (fl == null) AppLog.i("libFLAC could not open ${song.title}; using Apple decoder")
             }
 
+            if (fl != null && fl.channels > 2) {
+                AppLog.i("${song.title} has ${fl.channels} channels; using Apple decoder")
+                val old = fl
+                dispatch_sync(feedQueue) { old.close() }
+                fl = null
+            }
+
             val fmt: AVAudioFormat
             val frames: Long
             if (fl != null) {
@@ -383,8 +391,13 @@ class IosAudioPlayer : AudioPlayer {
     // ---------- controls ----------
     private fun resume() {
         if (_state.value.song == null) return
-        ensureEngine()
-        node.play()
+        AVAudioSession.sharedInstance().setActive(true, null)
+        if (!engine.running) {
+            // iOS stops the engine on interruptions and drops scheduled buffers, so rebuild from here.
+            startPlayback(_state.value.positionMs)
+        } else {
+            node.play()
+        }
         _state.update { it.copy(isPlaying = true) }
         updateNowPlaying()
     }
