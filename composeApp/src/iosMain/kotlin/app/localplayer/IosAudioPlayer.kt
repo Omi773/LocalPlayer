@@ -6,6 +6,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import platform.AVFAudio.*
+import platform.AVFoundation.AVMetadataCommonKeyArtwork
+import platform.AVFoundation.AVMetadataItem
+import platform.AVFoundation.AVURLAsset
 import platform.Foundation.*
 import platform.MediaPlayer.*
 import platform.UIKit.*
@@ -143,10 +146,39 @@ class IosAudioPlayer : AudioPlayer {
         }
     }
 
+    private var artPath: String? = null
+    private var artCache: MPMediaItemArtwork? = null
+
+    private fun lockArtwork(song: Song): MPMediaItemArtwork? {
+        if (artPath == song.path) return artCache
+        artPath = song.path
+        artCache = try {
+            val flacPic = if (song.path.substringAfterLast('.', "").lowercase() == "flac") {
+                FlacReader.read(song.path, true)?.picture
+            } else null
+            var bytes: ByteArray? = flacPic
+            if (bytes == null) {
+                val asset = AVURLAsset(uRL = NSURL.fileURLWithPath(song.path), options = null)
+                for (raw in asset.commonMetadata) {
+                    val item = raw as? AVMetadataItem ?: continue
+                    if (item.commonKey == AVMetadataCommonKeyArtwork) {
+                        val data = item.dataValue ?: (item.value as? NSData)
+                        if (data != null) { bytes = data.toByteArray(); break }
+                    }
+                }
+            }
+            val img = bytes?.let { UIImage.imageWithData(it.toNSData()) }
+            if (img != null) MPMediaItemArtwork(boundsSize = img.size, requestHandler = { _ -> img }) else null
+        } catch (_: Throwable) {
+            null
+        }
+        return artCache
+    }
+
     private fun updateNowPlaying() {
         val s = _state.value
         val song = s.song ?: return
-        MPNowPlayingInfoCenter.defaultCenter().nowPlayingInfo = mapOf<Any?, Any?>(
+        val info = mutableMapOf<Any?, Any?>(
             MPMediaItemPropertyTitle to song.title,
             MPMediaItemPropertyArtist to song.artist,
             MPMediaItemPropertyAlbumTitle to song.album,
@@ -154,7 +186,10 @@ class IosAudioPlayer : AudioPlayer {
             MPNowPlayingInfoPropertyElapsedPlaybackTime to s.positionMs / 1000.0,
             MPNowPlayingInfoPropertyPlaybackRate to (if (s.isPlaying) 1.0 else 0.0),
         )
+        lockArtwork(song)?.let { info[MPMediaItemPropertyArtwork] = it }
+        MPNowPlayingInfoCenter.defaultCenter().nowPlayingInfo = info
     }
+
 
     // ---------- music haptics ----------
     private fun onTap(buf: AVAudioPCMBuffer?) {
