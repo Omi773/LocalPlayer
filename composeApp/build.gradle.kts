@@ -4,11 +4,18 @@ plugins {
     alias(libs.plugins.composeCompiler)
 }
 
+val flacDir = project.file("libs/flac")
+
 kotlin {
-    listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
-        target.binaries.framework {
+    iosArm64 {
+        binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
+        }
+        compilations.getByName("main").cinterops.create("flac") {
+            definitionFile.set(project.file("src/nativeInterop/cinterop/flac.def"))
+            includeDirs(flacDir.resolve("include"))
+            extraOpts("-libraryPath", flacDir.resolve("lib").absolutePath, "-staticLibrary", "libFLAC.a")
         }
     }
 
