@@ -54,7 +54,15 @@ internal object FlacReader {
     fun read(path: String, wantPicture: Boolean): FlacInfo? {
         val fh = NSFileHandle.fileHandleForReadingAtPath(path) ?: return null
         try {
-            val magic = fh.readBytes(4)
+            var magic = fh.readBytes(4)
+            if (magic.size == 4 && magic[0] == 0x49.toByte() && magic[1] == 0x44.toByte() && magic[2] == 0x33.toByte()) {
+                val rest = fh.readBytes(6)
+                if (rest.size < 6) return null
+                val size = (u8(rest, 2) shl 21) or (u8(rest, 3) shl 14) or (u8(rest, 4) shl 7) or u8(rest, 5)
+                val footer = if ((u8(rest, 1) and 0x10) != 0) 10 else 0
+                fh.seekToFileOffset((10L + size + footer).toULong())
+                magic = fh.readBytes(4)
+            }
             if (magic.size < 4 || magic.decodeToString() != "fLaC") return null
             val info = FlacInfo()
             var last = false
