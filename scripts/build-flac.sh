@@ -25,7 +25,6 @@ cmake -S "flac-${VER}" -B build \
   -DCMAKE_OSX_ARCHITECTURES=arm64 \
   -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="$OUT" \
   -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
   -DBUILD_SHARED_LIBS=OFF \
@@ -35,12 +34,18 @@ cmake -S "flac-${VER}" -B build \
   -DBUILD_TESTING=OFF \
   -DBUILD_DOCS=OFF \
   -DINSTALL_MANPAGES=OFF \
-  -DINSTALL_PKGCONFIG_MODULES=OFF \
-  -DINSTALL_CMAKE_CONFIG_MODULE=OFF \
   -DWITH_OGG=OFF
 
-cmake --build build --config Release --target install -j "$(sysctl -n hw.ncpu)"
+# Build only the library target. Building "all" also builds a benchmark tool that fails to link on iOS.
+cmake --build build --config Release --target FLAC -j "$(sysctl -n hw.ncpu)"
 
-test -f "$OUT/lib/libFLAC.a"
+LIB="$(find build -name libFLAC.a | head -n 1)"
+test -n "$LIB" || { echo "libFLAC.a was not produced" >&2; exit 1; }
+
+mkdir -p "$OUT/lib" "$OUT/include"
+cp "$LIB" "$OUT/lib/libFLAC.a"
+cp -R "flac-${VER}/include/FLAC" "$OUT/include/"
+
 test -f "$OUT/include/FLAC/stream_decoder.h"
+lipo -info "$OUT/lib/libFLAC.a" || true
 echo "libFLAC installed"
