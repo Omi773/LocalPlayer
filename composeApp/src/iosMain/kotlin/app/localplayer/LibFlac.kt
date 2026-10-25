@@ -6,7 +6,7 @@ import kotlinx.cinterop.*
 private val flacWrite: FLAC__StreamDecoderWriteCallback = staticCFunction { _, frame, buffer, client ->
     val self = client!!.asStableRef<LibFlac>().get()
     self.onFrame(frame!!, buffer!!)
-    FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE
+        FLAC__StreamDecoderWriteStatus.FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE
 }
 
 private val flacError: FLAC__StreamDecoderErrorCallback = staticCFunction { _, _, client ->
