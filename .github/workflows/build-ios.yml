@@ -8,6 +8,7 @@ on:
 jobs:
   build:
     runs-on: macos-15
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -19,6 +20,21 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.10.2"
+
+      - name: Cache Kotlin/Native toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+
+      - name: Cache libFLAC
+        uses: actions/cache@v4
+        with:
+          path: composeApp/libs/flac
+          key: libflac-ios-arm64-${{ hashFiles('scripts/build-flac.sh') }}
+
+      - name: Build libFLAC for iOS
+        run: bash scripts/build-flac.sh
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -42,6 +58,7 @@ jobs:
       - name: Package IPA
         run: |
           cd iosApp/build/Build/Products/Release-iphoneos
+          rm -rf Payload LocalPlayer.ipa
           mkdir Payload
           cp -R LocalPlayer.app Payload/
           zip -qr LocalPlayer.ipa Payload
