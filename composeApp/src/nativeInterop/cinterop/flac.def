@@ -1,0 +1,3 @@
+package = flac
+headers = FLAC/stream_decoder.h
+headerFilter = FLAC/*
