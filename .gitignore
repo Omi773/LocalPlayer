@@ -6,3 +6,4 @@ iosApp/LocalPlayer/Info.plist
 .DS_Store
 local.properties
 .idea/
+composeApp/libs/
